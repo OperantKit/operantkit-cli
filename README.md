@@ -11,7 +11,7 @@ contingency-dsl-py  →  parse DSL string
 contingency-py      →  bridge AST → runtime Schedule
 session-runner      →  drive Session
 experiment-io       →  poll virtual / serial / HIL hardware
-session-recorder    →  persist events to JSONL
+session-recorder    →  persist events to an OKL v1 log
 ```
 
 ## Installation
@@ -38,6 +38,51 @@ point pip at it:
 ```bash
 mise exec -- .venv/bin/python -m pip install --find-links <wheel-dir> -e '.[dev]'
 ```
+
+## 30-second example
+
+Run a fixed-interval 30-s schedule against the built-in virtual subject until 5 reinforcers are delivered:
+
+```bash
+operant run --schedule "FI30s" --output fi30.okl --exit-reinforcers 5
+grep -v '^#' fi30.okl | cut -f2 | sort | uniq -c
+#    5 reinforcer_end
+#    5 reinforcer_start
+#  132 response
+#   12 state_change
+tail -n 1 fi30.okl
+# 154.56400194973696	state_change	RUNNING	FINISHED
+```
+
+Session time is simulated, so the 155-s session above finishes in about 0.1 s of wall time, and the log is identical on every run (the virtual subject is seeded with `--seed`, default `0`). `fi30.okl` starts with a header that records the DSL source and the column layout of every event type:
+
+```
+# OKL v1
+# session_name = "session"
+# clock_type = "ManualClock"
+# session_start = 0.0
+# meta:
+#   dsl = "FI30s"
+# events:
+#   response          : id:int operandum:int?
+#   reinforcer_start  : id:int potency:float operandum:int?
+...
+# ---
+0.0	state_change	IDLE	RUNNING
+1.8606071110652234	response	1	-
+```
+
+Analyze the log with [session-analyzer](https://github.com/OperantKit/session-analyzer) (`pip install session-analyzer`).
+
+## Why not a 50-line hand-written session loop?
+
+A short script that draws responses and checks a schedule usually leaves out the parts that make a session reportable:
+
+- **One schedule notation for every procedure.** `--schedule` takes any [contingency-dsl](https://github.com/OperantKit/contingency-dsl) expression that [contingency-py](https://github.com/OperantKit/contingency-py) compiles, including concurrent and other compound schedules and program annotations such as `@algorithm("fleshler-hoffman", n=12, seed=42)`. VI / VR / VT values come from the Fleshler-Hoffman (1962) progression, not ad-hoc random draws.
+- **One operandum per concurrent component.** For `Conc(...)` each component gets its own virtual operandum with an independent Poisson responder (seeds `--seed`, `--seed + 1`, ...), so every component is exposed to responding.
+- **Reproducible runs.** With `@algorithm(..., seed=N)` in the DSL and a fixed `--seed`, two runs write byte-identical logs.
+- **A self-describing log.** The OKL v1 header stores the session name, clock type, the DSL source, and the column layout of each event type (`response`, `reinforcer_start`, `reinforcer_end`, `state_change`, `component_change`, `phase_enter`, `phase_exit`).
+- **Input errors stop before the session starts.** An invalid schedule or exit condition prints one `operant: error: ...` line, exits with status 2, and writes no log file.
 
 ## Usage
 
@@ -75,7 +120,7 @@ Run a session against a virtual Poisson subject and write an OKL v1 log.
 | Flag | Default | Meaning |
 |---|---|---|
 | `--schedule DSL` | required | contingency-dsl source. |
-| `--output PATH` | required | JSONL output path. |
+| `--output PATH` | required | OKL v1 log output path. |
 | `--exit-reinforcers N` | (one of these required) | Stop after N reinforcers. |
 | `--exit-time SECONDS` |  | Stop after SECONDS of session time. |
 | `--name NAME` | `session` | Session label. |

@@ -12,3 +12,4 @@ build/
 htmlcov/
 .local/
 PLAN.md
+src/operantkit_cli/_version.py

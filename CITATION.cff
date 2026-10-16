@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "operantkit-cli"
+abstract: "Command-line entry point that runs an OperantKit session from one contingency-dsl schedule expression and writes an OKL v1 event log."
+authors:
+  - name: "OperantKit contributors"
+type: software
+license: MIT
+repository-code: "https://github.com/OperantKit/operantkit-cli"
+url: "https://github.com/OperantKit"
+keywords:
+  - behavior-analysis
+  - operant-conditioning
+  - reinforcement-schedule

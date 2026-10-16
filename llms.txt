@@ -1,0 +1,38 @@
+# operantkit-cli
+
+> Command-line entry point for OperantKit: `operant run` takes one contingency-dsl schedule expression (FR, VR, FI, VI, FT, VT, CRF, EXT, DRO/DRL/DRH, concurrent, multiple, chained, and more), runs a session against a seeded virtual subject, and writes an OKL v1 event log.
+
+operantkit-cli is part of OperantKit, a set of Python/Rust packages for designing and running operant and respondent conditioning experiments (reinforcement schedules, session recording, analysis). Use it instead of hand-writing a session loop: the schedule is stated once in contingency-dsl, variable schedules use the Fleshler-Hoffman (1962) progression with a controllable seed, each concurrent component gets its own operandum, and the log header records the DSL source and the column layout of every event type.
+
+## Install
+
+```bash
+pip install operantkit-cli
+```
+
+## Minimal example
+
+```bash
+operant run --schedule "FI30s" --output fi30.okl --exit-reinforcers 5
+grep -v '^#' fi30.okl | cut -f2 | sort | uniq -c
+#    5 reinforcer_end
+#    5 reinforcer_start
+#  132 response
+#   12 state_change
+```
+
+Session time is simulated (the session above lasts 154.6 s and finishes in about 0.1 s), and the log is identical on every run. Seed VI / VR / VT values in the DSL itself, for example `--schedule $'@algorithm("fleshler-hoffman", n=12, seed=42)\nConc(VI30s, VI60s)'`. Stop with `--exit-reinforcers N` or `--exit-time SECONDS`. An invalid schedule prints one `operant: error: ...` line and exits with status 2.
+
+## Docs
+
+- [README](https://github.com/OperantKit/operantkit-cli/blob/main/README.md): install, 30-second example, why not to hand-roll a session loop, all `run` flags
+- [AGENTS.md](https://github.com/OperantKit/operantkit-cli/blob/main/AGENTS.md): when to use this package and what not to do
+
+## Related packages
+
+- [contingency-dsl](https://github.com/OperantKit/contingency-dsl): the schedule language specification accepted by `--schedule`
+- [contingency-py](https://github.com/OperantKit/contingency-py): the schedule engine the CLI compiles the DSL into (`pip install contingency-py`)
+- [session-runner](https://github.com/OperantKit/session-runner): the session loop the CLI drives; use it directly to embed a session in your own program
+- [session-recorder](https://github.com/OperantKit/session-recorder): OKL v1 log writer and reader
+- [experiment-io](https://github.com/OperantKit/experiment-io): virtual, serial, and HIL apparatus backends
+- [session-analyzer](https://github.com/OperantKit/session-analyzer): cumulative records, statistics, and model fitting for OKL v1 logs

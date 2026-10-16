@@ -1,22 +1,39 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "operantkit-cli"
-version = "0.0.0"
-description = "Command-line entry point that runs OperantKit sessions declaratively (DSL → schedule → SessionRunner → JsonlSink → HAL)."
+dynamic = ["version"]
+description = "Command-line entry point that runs an OperantKit session from one contingency-dsl schedule expression and writes an OKL v1 event log."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
-authors = [{ name = "operantkit contributors" }]
+authors = [{ name = "OperantKit contributors" }]
+keywords = [
+    "behavior-analysis",
+    "operant-conditioning",
+    "reinforcement-schedule",
+    "experiment",
+    "cli",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
 dependencies = [
-    "experiment-core",
-    "session-runner",
-    "session-recorder",
-    "experiment-io",
-    "contingency-py",
-    "contingency-dsl-py",
+    "experiment-core>=0.1.1,<0.2",
+    "session-runner>=0.1.1,<0.2",
+    "session-recorder>=0.1.1,<0.2",
+    "experiment-io>=0.1.1,<0.2",
+    "contingency-py>=0.1.1,<0.2",
+    "contingency-dsl-py>=0.1.1,<0.2",
 ]
 
 [project.optional-dependencies]
@@ -34,6 +51,16 @@ dev = [
 [project.scripts]
 operant = "operantkit_cli.cli:main"
 operantkit-cli = "operantkit_cli.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/OperantKit"
+Repository = "https://github.com/OperantKit/operantkit-cli"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/operantkit_cli/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/operantkit_cli"]
