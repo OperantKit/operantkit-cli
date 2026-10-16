@@ -1,0 +1,59 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "operantkit-cli"
+version = "0.0.0"
+description = "Command-line entry point that runs OperantKit sessions declaratively (DSL → schedule → SessionRunner → JsonlSink → HAL)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "operantkit contributors" }]
+dependencies = [
+    "experiment-core",
+    "session-runner",
+    "session-recorder",
+    "experiment-io",
+    "contingency-py",
+    "contingency-dsl-py",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8",
+    "pytest-cov",
+]
+dev = [
+    "pytest>=8",
+    "pytest-cov",
+    "ruff",
+    "black",
+]
+
+[project.scripts]
+operant = "operantkit_cli.cli:main"
+operantkit-cli = "operantkit_cli.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/operantkit_cli"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "unit: unit-level tests",
+    "integration: integration-level tests spanning modules",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+ignore = ["E501"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
