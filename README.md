@@ -72,7 +72,7 @@ To plot or analyze the log, use [session-analyzer](https://github.com/OperantKit
 | `--seed N` | `0` | Seed of the virtual subject's responding |
 | `--reinforcer-duration SEC` | `0.5` | How long each reinforcer delivery lasts |
 | `--poll-interval SEC` | `0.001` | Clock advance per idle step |
-| `--max-steps N` | `5000` | Upper limit on loop steps (see Limitations) |
+| `--max-steps N` | derived | Upper limit on loop steps (see Limitations) |
 | `--max-duration SEC` | none | Optional limit on wall time |
 
 **Concurrent schedules.** Each component of `Conc(...)` gets its own virtual operandum (the lever or key the subject responds on), with an independent responder seeded `--seed`, `--seed + 1`, and so on.
@@ -89,7 +89,7 @@ The components receive seeds 42, 43, … in the order they are written.
 ## Limitations
 
 - **Only the virtual subject.** The subject responds at a constant Poisson rate and does not change with reinforcement, so the log shows what the schedule program delivers, not what an animal would do. Serial-port and hardware-in-the-loop backends exist in [experiment-io](https://github.com/OperantKit/experiment-io) but cannot be selected from this command.
-- **Long sessions need `--max-steps`.** With the default of 5000 steps, a session with more than about 5000 events stops with `RuntimeError: drive: did not finish within 5000 steps` and leaves a partial log. Raise the limit, for example `--max-steps 1000000`.
+- **Step limit.** Each response and each reinforcer delivery is one loop step. With `--exit-time`, the default limit is set from the session time and the response rate, so the time limit ends the session. With `--exit-reinforcers`, the default limit is 1,000,000 steps, which stops a schedule that never delivers a reinforcer (for example `EXT`). A session that reaches the limit stops with `RuntimeError: drive: did not finish within N steps` and leaves a partial log; give a larger `--max-steps N` if needed.
 - **Fleshler–Hoffman only.** `@algorithm("arithmetic")` is rejected with an error.
 - **Times are simulated.** Times in the log are session time on a simulated clock, not wall-clock time.
 

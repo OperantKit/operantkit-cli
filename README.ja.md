@@ -72,7 +72,7 @@ tail -n 1 fi30.okl
 | `--seed N` | `0` | 仮想被験体の反応の seed |
 | `--reinforcer-duration SEC` | `0.5` | 強化子 1 回の提示時間 |
 | `--poll-interval SEC` | `0.001` | 待機中の 1 ステップで時計を進める量 |
-| `--max-steps N` | `5000` | ループのステップ数の上限（「制限」を参照） |
+| `--max-steps N` | 自動 | ループのステップ数の上限（「制限」を参照） |
 | `--max-duration SEC` | なし | 壁時計時間の上限（任意） |
 
 **並立スケジュール。** `Conc(...)` の各成分には、それぞれ専用の仮想オペランダム（被験体が反応するレバーやキー）と、seed が `--seed`、`--seed + 1`、… の独立した反応源が付きます。
@@ -89,7 +89,7 @@ operant run --schedule $'@algorithm("fleshler-hoffman", n=12, seed=42)\nConc(VI3
 ## 制限
 
 - **仮想被験体のみ。** 被験体は一定の Poisson 率で反応し、強化によって変化しません。そのためログが示すのはスケジュールのプログラムが何を提示するかであって、動物がどう振る舞うかではありません。シリアルポートと HIL（hardware-in-the-loop、実機を回路ごとつないだ検証）のバックエンドは [experiment-io](https://github.com/OperantKit/experiment-io) にありますが、このコマンドからは選べません。
-- **長いセッションには `--max-steps` が要ります。** 既定の 5000 ステップでは、イベントがおよそ 5000 を超えるセッションは `RuntimeError: drive: did not finish within 5000 steps` で止まり、途中までのログが残ります。`--max-steps 1000000` のように上限を上げてください。
+- **ステップ数の上限。** 反応 1 回と強化子の提示 1 回がそれぞれループの 1 ステップです。`--exit-time` のときの既定の上限はセッション時間と反応率から決まるので、セッションは時間の上限で終わります。`--exit-reinforcers` のときの既定の上限は 1,000,000 ステップで、強化子を提示しないスケジュール（例: `EXT`）が止まらなくなるのを防ぎます。上限に達したセッションは `RuntimeError: drive: did not finish within N steps` で止まり、途中までのログが残ります。必要なら `--max-steps N` で大きな値を指定してください。
 - **Fleshler–Hoffman のみ。** `@algorithm("arithmetic")` はエラーになります。
 - **時刻は模擬時間です。** ログの時刻は模擬時計上のセッション時間で、壁時計の時刻ではありません。
 

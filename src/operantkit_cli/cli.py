@@ -18,6 +18,7 @@ reinforcers have been delivered::
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -44,6 +45,12 @@ from experiment_io.hw.backends.virtual import (
 )
 from session_recorder import OklSink
 from session_runner import SessionConfig, SessionRunner, tee
+
+# Step cap used with --exit-reinforcers when --max-steps is not given. The
+# number of responses needed per reinforcer depends on the schedule, so no
+# bound follows from the exit condition; this stops a schedule that never
+# delivers a reinforcer (for example EXT) from running forever.
+_REINFORCER_EXIT_MAX_STEPS = 1_000_000
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -122,8 +129,10 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--max-steps",
         type=int,
-        default=5_000,
-        help="Hard cap on hardware-loop iterations.",
+        default=None,
+        help="Cap on session-loop steps (one per response or reinforcer delivery). "
+        "Default: derived from --exit-time, or "
+        f"{_REINFORCER_EXIT_MAX_STEPS:,} with --exit-reinforcers.",
     )
     run.add_argument(
         "--max-duration",
@@ -182,6 +191,23 @@ def _build_virtual_operanda(schedule, args: argparse.Namespace, clock: ManualClo
     return [VirtualOperandum(0, subject, clock)]
 
 
+def _max_steps(args: argparse.Namespace, n_operanda: int) -> int:
+    """Return the step cap for ``drive``.
+
+    Each virtual poll yields one response and each reinforcer delivery
+    takes one further step, so a session runs at most two steps per
+    response. With ``--exit-time`` the response count is Poisson with mean
+    ``rate * operanda * time``; the cap allows ten standard deviations
+    above that mean, so the time limit is what ends the session.
+    """
+    if args.max_steps is not None:
+        return args.max_steps
+    if args.exit_reinforcers is not None:
+        return _REINFORCER_EXIT_MAX_STEPS
+    mean = max(args.virtual_rate_hz, 0.0) * n_operanda * args.exit_time
+    return 2 * math.ceil(mean + 10 * math.sqrt(mean) + 100)
+
+
 def run(args: argparse.Namespace, schedule, exit_condition) -> int:
     """Execute the ``run`` subcommand with already-validated inputs."""
 
@@ -215,7 +241,7 @@ def run(args: argparse.Namespace, schedule, exit_condition) -> int:
         clock=clock,
         reinforcer_duration=args.reinforcer_duration,
         max_duration=args.max_duration,
-        max_steps=args.max_steps,
+        max_steps=_max_steps(args, len(operanda)),
         poll_interval=args.poll_interval,
     )
     return 0

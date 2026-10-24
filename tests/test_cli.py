@@ -256,3 +256,25 @@ def test_main_run_invalid_schedule_writes_no_log(tmp_path: Path) -> None:
     rc = main(["run", "--schedule", "FR", "--output", str(output), "--exit-time", "5"])
     assert rc == 2
     assert not output.exists()
+
+
+@pytest.mark.integration
+def test_main_run_hour_long_concurrent_session_finishes(tmp_path: Path) -> None:
+    """A one-hour ``--exit-time`` session is not cut short by the step cap."""
+    output = tmp_path / "c2.okl"
+    rc = main(
+        [
+            "run",
+            "--schedule",
+            "Conc(VI 135-s, VI 270-s, COD=1.5-s)",
+            "--output",
+            str(output),
+            "--exit-time",
+            "3600",
+        ]
+    )
+    assert rc == 0
+    last = [line for line in output.read_text().splitlines() if not line.startswith("#")][-1]
+    time, event, *fields = last.split("\t")
+    assert (event, fields) == ("state_change", ["RUNNING", "FINISHED"])
+    assert 3600 <= float(time) < 3610
