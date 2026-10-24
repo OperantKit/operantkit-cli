@@ -18,6 +18,16 @@ To embed a session in your own program (custom responders, hardware, live displa
 - The OKL v1 header records the session name, clock type, DSL source, and the column layout of each event type, so the log can be read without this package.
 - Invalid input (unparseable schedule, `--exit-reinforcers 0`, non-positive `--exit-time`) prints one `operant: error: ...` line, exits with status 2, and writes no log.
 
+## Why not a 50-line hand-written session loop?
+
+A short script that draws responses and checks a schedule usually leaves out the parts that make a session reportable:
+
+- **One schedule notation for every procedure.** `--schedule` takes any [contingency-dsl](https://github.com/OperantKit/contingency-dsl) expression that [contingency-py](https://github.com/OperantKit/contingency-py) compiles, including concurrent and other compound schedules and program annotations such as `@algorithm("fleshler-hoffman", n=12, seed=42)`. VI / VR / VT values come from the Fleshler-Hoffman (1962) progression, not ad-hoc random draws.
+- **One operandum per concurrent component.** For `Conc(...)` each component gets its own virtual operandum with an independent Poisson responder (seeds `--seed`, `--seed + 1`, ...), so every component is exposed to responding.
+- **Reproducible runs.** With `@algorithm(..., seed=N)` in the DSL and a fixed `--seed`, two runs write byte-identical logs.
+- **A self-describing log.** The OKL v1 header stores the session name, clock type, the DSL source, and the column layout of each event type (`response`, `reinforcer_start`, `reinforcer_end`, `state_change`, `component_change`, `phase_enter`, `phase_exit`).
+- **Input errors stop before the session starts.** An invalid schedule or exit condition prints one `operant: error: ...` line, exits with status 2, and writes no log file.
+
 ## Do not
 
 - Do not reimplement a session loop or a schedule to produce a log that this command already produces.

@@ -2,45 +2,29 @@
 
 :gb: [English README](README.md)
 
-OperantKit セッションのエンドツーエンド・コマンドライン・エントリポイント。
+`operant run` は、強化スケジュール 1 つのセッションを仮想被験体に対して実行し、すべてのイベントをテキストのログに書き出すコマンドです。コードを書く必要はありません。[OperantKit](https://github.com/OperantKit) のコマンドラインの入口で、スケジュールを contingency-dsl-py で解析し、contingency-py・experiment-core・session-runner・experiment-io で実行し、session-recorder でログを書きます。
 
-`operantkit-cli` は OperantKit 実験スタックを束ねる:
+- **式 1 つでログ 1 つ。** `--schedule "Conc(VI30s, VI60s, COD=2s)"` が手続きのすべてです。
+- **数時間ではなく数秒。** セッション時間は模擬時計で進み、同じ seed なら同じログがバイト単位で書かれます。
+- **誤りはセッションの前に止まります。** 不正なスケジュールはエラーを 1 行出し、ログを書きません。
 
-```
-contingency-dsl-py  →  DSL 文字列をパース
-contingency-py      →  AST → ランタイム Schedule 変換
-session-runner      →  Session 駆動
-experiment-io       →  virtual / serial / HIL HW ポーリング
-session-recorder    →  イベントを OKL v1 ログに永続化
-```
+動物を走らせる前にスケジュールのプログラムが実際に何を提示するかを確かめる、授業用の例データを作る、中身の分かったログを分析の流れに流す、といった用途に使います。
 
 ## インストール
 
-```bash
-pip install operantkit-cli
-```
-
-`operant` コマンドと、それが駆動する OperantKit の 6 ライブラリ
-（contingency-dsl-py、contingency-py、experiment-core、session-runner、
-session-recorder、experiment-io）が一緒に入る。
-
-### 開発
+Python 3.11 以上が必要です。各パッケージはまだ PyPI に登録されていないので、GitHub から依存の解決なしで入れます:
 
 ```bash
-mise exec -- python -m venv .venv
-mise exec -- .venv/bin/python -m pip install -e '.[dev]'
+G=git+https://github.com/OperantKit
+pip install --no-deps $G/contingency-dsl-py $G/contingency-py $G/experiment-core \
+  $G/session-runner $G/session-recorder $G/experiment-io $G/operantkit-cli
 ```
 
-兄弟の OperantKit ライブラリがパッケージインデックスから取れない場合は、
-それらの wheel を 1 つのディレクトリに置き、pip にそのディレクトリを渡す:
-
-```bash
-mise exec -- .venv/bin/python -m pip install --find-links <wheel-dir> -e '.[dev]'
-```
+外部のライブラリは要りません。`pip check` はこれら開発版どうしのバージョンの食い違いを報告しますが、このコマンドの動作には影響しません。
 
 ## 30 秒で動く例
 
-固定時隔 30 秒（FI 30 s）スケジュールを組み込みの仮想被験体に対して実行し、強化子が 5 回呈示されたら止める:
+固定時隔（FI）30 秒スケジュールを組み込みの仮想被験体に対して実行し、強化子が 5 回提示されたら止めます:
 
 ```bash
 operant run --schedule "FI30s" --output fi30.okl --exit-reinforcers 5
@@ -53,7 +37,7 @@ tail -n 1 fi30.okl
 # 154.56400194973696	state_change	RUNNING	FINISHED
 ```
 
-セッション時間は模擬時計で進むので、上の 155 秒のセッションは壁時計で約 0.1 秒で終わり、何度実行しても同じログになる（仮想被験体は `--seed`、既定 `0` で固定される）。`fi30.okl` の先頭には、DSL ソースと各イベント種の列構成を記録したヘッダが付く:
+155 秒のセッションが壁時計で 1 秒もかからずに終わり、もう一度実行しても同じファイルが書かれます。`fi30.okl` は OKL（OperantKit Log）形式のファイルで、スケジュールの式と各イベント種の列を記録したヘッダの後に、イベントごとにタブ区切りの 1 行が続きます。
 
 ```
 # OKL v1
@@ -71,78 +55,62 @@ tail -n 1 fi30.okl
 1.8606071110652234	response	1	-
 ```
 
-ログの解析は [session-analyzer](https://github.com/OperantKit/session-analyzer)（`pip install session-analyzer`）で行う。
-
-## 自作の 50 行では足りない理由
-
-反応を発生させてスケジュールを判定するだけの短いスクリプトは、セッションを報告できる形にする部分をたいてい欠く:
-
-- **どの手続きも 1 つのスケジュール記法で書ける。** `--schedule` は [contingency-py](https://github.com/OperantKit/contingency-py) が変換できる [contingency-dsl](https://github.com/OperantKit/contingency-dsl) の式をすべて受け付ける。並立スケジュールなどの複合スケジュールや、`@algorithm("fleshler-hoffman", n=12, seed=42)` のようなプログラム注釈も含む。VI / VR / VT の値はその場しのぎの乱数ではなく Fleshler-Hoffman (1962) の数列から作る。
-- **並立スケジュールの成分ごとに操作体が 1 つ。** `Conc(...)` では成分ごとに仮想操作体と独立した Poisson 反応源（seed は `--seed`、`--seed + 1`、...）が付くので、すべての成分が反応にさらされる。
-- **再現できる実行。** DSL に `@algorithm(..., seed=N)` を書き `--seed` を固定すれば、2 回の実行がバイト単位で同じログを書く。
-- **自己記述的なログ。** OKL v1 のヘッダに、セッション名・時計の種類・DSL ソース・各イベント種（`response`、`reinforcer_start`、`reinforcer_end`、`state_change`、`component_change`、`phase_enter`、`phase_exit`）の列構成が残る。
-- **入力の誤りはセッション開始前に止まる。** 不正なスケジュールや終了条件は `operant: error: ...` を 1 行出して終了コード 2 で終わり、ログファイルを作らない。
+ログの描画や分析には [session-analyzer](https://github.com/OperantKit/session-analyzer) を使います。
 
 ## 使い方
 
-```bash
-operant run --schedule "FR3" \
-    --output fr3.okl \
-    --exit-reinforcers 5 \
-    --virtual-rate-hz 5.0
-```
+`operant` のサブコマンドは `run` の 1 つです。`--schedule` には、[contingency-py](https://github.com/OperantKit/contingency-py) が実行できる [contingency-dsl](https://github.com/OperantKit/contingency-dsl) の式を何でも渡せます（例: `"FR3"`、`"VI60s"`、`"Conc(VI30s, VI60s, COD=2s)"`。COD は切替遅延）。`--exit-reinforcers` と `--exit-time` のどちらか一方だけを指定します。`python -m operantkit_cli run ...` も同じコマンドです。
 
-`--schedule` は `contingency_dsl.parse` + `contingency.bridge.from_dsl`
-が受理する任意の式を受け付ける（例: `"FI30s"`,
-`"Conc(VI30s, VI60s)"`）。終了条件は `--exit-reinforcers N` か
-`--exit-time SECONDS` のいずれか（排他）。モジュール経由の起動も可:
-`python -m operantkit_cli run ...`。
+| フラグ | 既定値 | 意味 |
+|---|---|---|
+| `--schedule DSL` | 必須 | contingency-dsl の式 |
+| `--output PATH` | 必須 | 書き出す OKL ログのパス |
+| `--exit-reinforcers N` | この 2 つのどちらかが必須 | 強化子 N 回で停止 |
+| `--exit-time SECONDS` | | セッション時間 SECONDS 秒で停止 |
+| `--name NAME` | `session` | ヘッダに書くセッション名 |
+| `--virtual-rate-hz HZ` | `1.0` | 仮想被験体の反応率（毎秒の反応数） |
+| `--seed N` | `0` | 仮想被験体の反応の seed |
+| `--reinforcer-duration SEC` | `0.5` | 強化子 1 回の提示時間 |
+| `--poll-interval SEC` | `0.001` | 待機中の 1 ステップで時計を進める量 |
+| `--max-steps N` | `5000` | ループのステップ数の上限（「制限」を参照） |
+| `--max-duration SEC` | なし | 壁時計時間の上限（任意） |
 
-プログラム全体に付く注釈（`@clock` など）も書ける。VI / VR / VT の
-セッションを再現可能にするには、DSL 自体に seed を書く:
+**並立スケジュール。** `Conc(...)` の各成分には、それぞれ専用の仮想オペランダム（被験体が反応するレバーやキー）と、seed が `--seed`、`--seed + 1`、… の独立した反応源が付きます。
+
+**再現できる VI・VR・VT の値。** 変動値は Fleshler と Hoffman (1962) の数列に従います。`--seed` が固定するのは被験体の反応だけなので、スケジュールの値を固定するには式の中で seed を指定します:
 
 ```bash
 operant run --schedule $'@algorithm("fleshler-hoffman", n=12, seed=42)\nConc(VI30s, VI60s)' \
     --output conc.okl --exit-time 1800 --seed 0
 ```
 
-各成分には記述順に seed 42, 43, ... が割り当てられる。`--seed` が固定するのは
-仮想被験体の反応だけである。VI / VR / VT の値は Fleshler-Hoffman でのみ生成し、
-`@algorithm("arithmetic")` はエラーになる。
+各成分には書いた順に seed 42、43、… が割り当てられます。
 
-## サブコマンド
+## 制限
 
-### `run`
+- **仮想被験体のみ。** 被験体は一定の Poisson 率で反応し、強化によって変化しません。そのためログが示すのはスケジュールのプログラムが何を提示するかであって、動物がどう振る舞うかではありません。シリアルポートと HIL（hardware-in-the-loop、実機を回路ごとつないだ検証）のバックエンドは [experiment-io](https://github.com/OperantKit/experiment-io) にありますが、このコマンドからは選べません。
+- **長いセッションには `--max-steps` が要ります。** 既定の 5000 ステップでは、イベントがおよそ 5000 を超えるセッションは `RuntimeError: drive: did not finish within 5000 steps` で止まり、途中までのログが残ります。`--max-steps 1000000` のように上限を上げてください。
+- **Fleshler–Hoffman のみ。** `@algorithm("arithmetic")` はエラーになります。
+- **時刻は模擬時間です。** ログの時刻は模擬時計上のセッション時間で、壁時計の時刻ではありません。
 
-仮想 Poisson 被験体に対してセッションを実行し OKL v1 ログを書き出す。
-
-| フラグ | 既定 | 意味 |
-|---|---|---|
-| `--schedule DSL` | 必須 | contingency-dsl ソース。 |
-| `--output PATH` | 必須 | OKL v1 ログの出力パス。 |
-| `--exit-reinforcers N` | （いずれか必須） | N 回の強化子で停止。 |
-| `--exit-time SECONDS` |  | SECONDS のセッション時間で停止。 |
-| `--name NAME` | `session` | セッションラベル。 |
-| `--virtual-rate-hz HZ` | `1.0` | 仮想被験体の Poisson rate。 |
-| `--seed N` | `0` | 被験体 RNG シード。 |
-| `--reinforcer-duration SEC` | `0.5` | 各呈示の保持時間。 |
-| `--poll-interval SEC` | `0.001` | アイドル時のクロック前進量。 |
-| `--max-steps N` | `5000` | ループ反復上限。 |
-| `--max-duration SEC` | なし | 任意の壁時計時間上限。 |
+このコマンドを AI のコーディング支援ツールに使わせる場合は [AGENTS.md](AGENTS.md) を参照してください。
 
 ## 開発
 
+このリポジトリを clone し、上の `--no-deps` のコマンドで他のパッケージを入れた後で:
+
 ```bash
-.venv/bin/pytest
-.venv/bin/pytest --cov=src --cov-report=term-missing
-.venv/bin/ruff check src tests
-.venv/bin/black --check src tests
+pip install --no-deps -e .
+pip install pytest pytest-cov
+pytest
 ```
 
-## 延期された機能
+`tests/test_readme_examples.py` は両方の README の「30 秒で動く例」を実行し、そこに書かれた件数と最終行を照合します。
 
-- `--config FILE.yaml` — 完全な session-spec を宣言的に読み込むローダ
-  （別パッケージ `schedule-dsl` 待ち）。
-- `--backend {serial,hil}` — `experiment-io` 側は対応済みだが CLI は
-  現時点で virtual backend のみを公開。
-- 決定論的な実スケジュールに対するスナップショットテスト。
+## 参考文献
+
+Fleshler, M., & Hoffman, H. S. (1962). A progression for generating variable-interval schedules. *Journal of the Experimental Analysis of Behavior*, *5*(4), 529–530. https://doi.org/10.1901/jeab.1962.5-529
+
+## ライセンス
+
+MIT。[LICENSE](LICENSE) を参照してください。
