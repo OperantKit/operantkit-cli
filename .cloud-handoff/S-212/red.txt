@@ -1,0 +1,15 @@
+    
+                if not routed_any and not driver.is_reinforcing:
+                    _advance(clock, poll_interval)
+                    driver.handle_tick(clock())
+    
+            if steps >= max_steps and not driver.is_finished:
+>               raise RuntimeError(
+                    f"drive: did not finish within {max_steps} steps"
+                )
+E               RuntimeError: drive: did not finish within 5000 steps
+
+.venv/lib/python3.11/site-packages/experiment_io/driver.py:154: RuntimeError
+=========================== short test summary info ============================
+FAILED tests/test_cli.py::test_main_run_hour_long_concurrent_session_finishes
+1 failed, 19 deselected in 1.28s
