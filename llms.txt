@@ -7,7 +7,14 @@ operantkit-cli is part of OperantKit, a set of Python/Rust packages for designin
 ## Install
 
 ```bash
-pip install operantkit-cli
+# Until the PyPI release, install from GitHub together with its OperantKit dependencies.
+pip install git+https://github.com/OperantKit/contingency-dsl-py \
+            git+https://github.com/OperantKit/contingency-py \
+            git+https://github.com/OperantKit/experiment-core \
+            git+https://github.com/OperantKit/session-runner \
+            git+https://github.com/OperantKit/session-recorder \
+            git+https://github.com/OperantKit/experiment-io \
+            git+https://github.com/OperantKit/operantkit-cli
 ```
 
 ## Minimal example
@@ -31,7 +38,7 @@ Session time is simulated (the session above lasts 154.6 s and finishes in about
 ## Related packages
 
 - [contingency-dsl](https://github.com/OperantKit/contingency-dsl): the schedule language specification accepted by `--schedule`
-- [contingency-py](https://github.com/OperantKit/contingency-py): the schedule engine the CLI compiles the DSL into (`pip install contingency-py`)
+- [contingency-py](https://github.com/OperantKit/contingency-py): the schedule engine the CLI compiles the DSL into
 - [session-runner](https://github.com/OperantKit/session-runner): the session loop the CLI drives; use it directly to embed a session in your own program
 - [session-recorder](https://github.com/OperantKit/session-recorder): OKL v1 log writer and reader
 - [experiment-io](https://github.com/OperantKit/experiment-io): virtual, serial, and HIL apparatus backends

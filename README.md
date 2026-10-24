@@ -12,15 +12,21 @@ Use it to see what a schedule program actually delivers before an animal runs on
 
 ## Installation
 
-Python 3.11 or newer. The packages are not on PyPI yet, so install them from GitHub without dependency resolution:
+
+Python 3.11 or newer. The packages are not on PyPI yet, so install them from GitHub together:
 
 ```bash
-G=git+https://github.com/OperantKit
-pip install --no-deps $G/contingency-dsl-py $G/contingency-py $G/experiment-core \
-  $G/session-runner $G/session-recorder $G/experiment-io $G/operantkit-cli
+# Until the PyPI release, install from GitHub together with its OperantKit dependencies.
+pip install git+https://github.com/OperantKit/contingency-dsl-py \
+            git+https://github.com/OperantKit/contingency-py \
+            git+https://github.com/OperantKit/experiment-core \
+            git+https://github.com/OperantKit/session-runner \
+            git+https://github.com/OperantKit/session-recorder \
+            git+https://github.com/OperantKit/experiment-io \
+            git+https://github.com/OperantKit/operantkit-cli
 ```
 
-No third-party library is needed. `pip check` reports version mismatches between these development builds; they do not affect the command.
+No third-party library is needed. pip resolves the dependencies between them, and `pip check` reports nothing.
 
 ## 30-second example
 

@@ -12,15 +12,21 @@
 
 ## インストール
 
-Python 3.11 以上が必要です。各パッケージはまだ PyPI に登録されていないので、GitHub から依存の解決なしで入れます:
+
+Python 3.11 以上が必要です。各パッケージはまだ PyPI に登録されていないので、GitHub から一緒に入れます:
 
 ```bash
-G=git+https://github.com/OperantKit
-pip install --no-deps $G/contingency-dsl-py $G/contingency-py $G/experiment-core \
-  $G/session-runner $G/session-recorder $G/experiment-io $G/operantkit-cli
+# PyPI に公開されるまでは、OperantKit の依存と一緒に GitHub から入れる。
+pip install git+https://github.com/OperantKit/contingency-dsl-py \
+            git+https://github.com/OperantKit/contingency-py \
+            git+https://github.com/OperantKit/experiment-core \
+            git+https://github.com/OperantKit/session-runner \
+            git+https://github.com/OperantKit/session-recorder \
+            git+https://github.com/OperantKit/experiment-io \
+            git+https://github.com/OperantKit/operantkit-cli
 ```
 
-外部のライブラリは要りません。`pip check` はこれら開発版どうしのバージョンの食い違いを報告しますが、このコマンドの動作には影響しません。
+外部のライブラリは要りません。依存は pip が解決するので、`pip check` は何も報告しません。
 
 ## 30 秒で動く例
 
