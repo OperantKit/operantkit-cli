@@ -2,9 +2,14 @@
 
 Runs an experiment declaratively: parse a contingency-dsl schedule
 expression, build the runtime schedule, drive it via
-``session_runner.SessionRunner`` against a virtual subject through
-``experiment_io.drive``, and persist events through
-``session_recorder.OklSink``.
+``session_runner.SessionRunner`` through ``experiment_io.drive``, and
+persist events through ``session_recorder.OklSink``.
+
+Two backends supply the responses and receive the reinforcers:
+
+- ``virtual`` (default): a seeded Poisson subject on a simulated clock.
+- ``serial``: a device on a serial port speaking the experiment-io serial
+  wire format, on the host's monotonic clock (requires pyserial).
 
 Examples
 --------
@@ -13,6 +18,11 @@ reinforcers have been delivered::
 
     operant run --schedule "FR3" --output fr3.okl \\
         --exit-reinforcers 5 --virtual-rate-hz 5.0
+
+Run CRF against a device on a serial port until 20 reinforcers::
+
+    operant run --backend serial --port /dev/cu.usbmodem1 \\
+        --schedule "CRF" --output crf.okl --exit-reinforcers 20
 """
 
 from __future__ import annotations
@@ -20,7 +30,8 @@ from __future__ import annotations
 import argparse
 import math
 import sys
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from contingency.bridge import from_dsl
@@ -35,6 +46,7 @@ from contingency_dsl.annotations.temporal.extension import TemporalExtension
 from contingency_dsl.extensions import ExtensionRegistry
 from experiment_core import ReinforcementCountExit, TimeLimitExit
 from experiment_io import drive
+from experiment_io.hw.backends.serial import SerialOperandum, SerialReinforcer
 from experiment_io.hw.backends.virtual import (
     ManualClock,
     MultiVirtualOperandum,
@@ -52,6 +64,15 @@ from session_runner import SessionConfig, SessionRunner, tee
 # delivers a reinforcer (for example EXT) from running forever.
 _REINFORCER_EXIT_MAX_STEPS = 1_000_000
 
+# Step cap for the serial backend when --max-steps is not given. ``drive``
+# counts every idle poll as a step, so on a real clock the step count grows
+# with elapsed time (about 1,000 per second at the default poll interval)
+# and says nothing about the session's length. The session is bounded by its
+# exit condition and by --max-duration instead.
+_SERIAL_MAX_STEPS = 2**62
+
+DEFAULT_BAUD = 115200
+
 
 def build_parser() -> argparse.ArgumentParser:
     """Construct the top-level argparse parser."""
@@ -59,14 +80,15 @@ def build_parser() -> argparse.ArgumentParser:
         prog="operant",
         description=(
             "Run an OperantKit session declaratively, driven by a "
-            "contingency-dsl schedule expression and virtual hardware."
+            "contingency-dsl schedule expression, against a virtual subject "
+            "or a device on a serial port."
         ),
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser(
         "run",
-        help="Run a session against a virtual subject and write an OKL v1 log.",
+        help="Run a session and write an OKL v1 log.",
     )
     run.add_argument(
         "--schedule",
@@ -102,6 +124,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     run.add_argument(
+        "--backend",
+        choices=("virtual", "serial"),
+        default="virtual",
+        help="Where responses come from: the virtual subject (default) or a "
+        "device on a serial port (--port).",
+    )
+    run.add_argument(
+        "--port",
+        default=None,
+        metavar="DEVICE",
+        help="Serial port of the device, e.g. /dev/cu.usbmodem1 or COM3 "
+        "(--backend serial only).",
+    )
+    run.add_argument(
+        "--baud",
+        type=int,
+        default=None,
+        help=f"Baud rate of the serial port (--backend serial only; default {DEFAULT_BAUD}).",
+    )
+    run.add_argument(
         "--virtual-rate-hz",
         type=float,
         default=1.0,
@@ -112,7 +154,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help="RNG seed for the virtual subject only. Seed VI/VR/VT schedule values "
-        'with the DSL annotation @algorithm(seed=...).',
+        "with the DSL annotation @algorithm(seed=...).",
     )
     run.add_argument(
         "--reinforcer-duration",
@@ -124,15 +166,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--poll-interval",
         type=float,
         default=0.001,
-        help="Virtual-clock advance per idle iteration (seconds).",
+        help="Wait per idle iteration (seconds): a virtual-clock advance, or a "
+        "sleep with --backend serial.",
     )
     run.add_argument(
         "--max-steps",
         type=int,
         default=None,
-        help="Cap on session-loop steps (one per response or reinforcer delivery). "
-        "Default: derived from --exit-time, or "
-        f"{_REINFORCER_EXIT_MAX_STEPS:,} with --exit-reinforcers.",
+        help="Cap on session-loop steps (one per response, reinforcer delivery, or idle poll). "
+        "Default (virtual): derived from --exit-time, or "
+        f"{_REINFORCER_EXIT_MAX_STEPS:,} with --exit-reinforcers. "
+        "Default (serial): no cap; the exit condition and --max-duration end "
+        "the session.",
     )
     run.add_argument(
         "--max-duration",
@@ -173,6 +218,41 @@ def _build_exit(args: argparse.Namespace):
     return TimeLimitExit(limit=args.exit_time)
 
 
+def _check_backend(args: argparse.Namespace, schedule) -> None:
+    """Reject backend options that do not fit together or with the schedule."""
+    if args.backend == "virtual":
+        for flag, value in (("--port", args.port), ("--baud", args.baud)):
+            if value is not None:
+                raise ValueError(f"{flag} requires --backend serial")
+        return
+    if args.port is None:
+        raise ValueError("--backend serial requires --port")
+    if isinstance(schedule, Concurrent):
+        # One port carries every operandum, and each SerialOperandum drops
+        # the lines of the other operanda, so components would lose responses.
+        raise ValueError(
+            "--backend serial does not support concurrent schedules yet; "
+            "use a single-operandum schedule"
+        )
+
+
+def _open_serial(port: str, baud: int):
+    """Open ``port`` with pyserial for non-blocking reads."""
+    try:
+        import serial
+    except ImportError as exc:
+        raise ValueError(
+            "--backend serial requires pyserial; install it with "
+            '`pip install pyserial` (or `pip install "operantkit-cli[serial]"`)'
+        ) from exc
+    return serial.Serial(port, baud, timeout=0)
+
+
+def _serial_clock() -> Callable[[], float]:
+    """Return the session clock of the serial backend."""
+    return time.monotonic
+
+
 def _build_virtual_operanda(schedule, args: argparse.Namespace, clock: ManualClock) -> list:
     """Build one virtual operandum per schedule component.
 
@@ -202,25 +282,43 @@ def _max_steps(args: argparse.Namespace, n_operanda: int) -> int:
     """
     if args.max_steps is not None:
         return args.max_steps
+    if args.backend == "serial":
+        return _SERIAL_MAX_STEPS
     if args.exit_reinforcers is not None:
         return _REINFORCER_EXIT_MAX_STEPS
     mean = max(args.virtual_rate_hz, 0.0) * n_operanda * args.exit_time
     return 2 * math.ceil(mean + 10 * math.sqrt(mean) + 100)
 
 
-def run(args: argparse.Namespace, schedule, exit_condition) -> int:
-    """Execute the ``run`` subcommand with already-validated inputs."""
+def run(args: argparse.Namespace, schedule, exit_condition, port=None) -> int:
+    """Execute the ``run`` subcommand with already-validated inputs.
 
-    clock = ManualClock()
-    operanda = _build_virtual_operanda(schedule, args, clock)
-    reinforcers = [RecordingReinforcer(operandum_index=i) for i in range(len(operanda))]
+    ``port`` is the opened serial port with ``--backend serial``.
+    """
+    if port is None:
+        clock: Callable[[], float] = ManualClock()
+        operanda = _build_virtual_operanda(schedule, args, clock)
+        reinforcers = [RecordingReinforcer(operandum_index=i) for i in range(len(operanda))]
+        clock_type = type(clock).__name__
+        metadata = {"dsl": args.schedule}
+    else:
+        clock = _serial_clock()
+        operanda = [SerialOperandum(port, 0)]
+        reinforcers = [SerialReinforcer(port, 0)]
+        clock_type = "monotonic"
+        metadata = {"dsl": args.schedule, "backend": "serial"}
+        # Lines the device sent before the session belong to no session.
+        reset = getattr(port, "reset_input_buffer", None)
+        if callable(reset):
+            reset()
 
+    start = clock()
     sink = OklSink(args.output)
     sink.write_header(
         session_name=args.name,
-        clock_type=type(clock).__name__,
-        session_start=0.0,
-        metadata={"dsl": args.schedule},
+        clock_type=clock_type,
+        session_start=start,
+        metadata=metadata,
     )
 
     runner = SessionRunner(
@@ -228,12 +326,12 @@ def run(args: argparse.Namespace, schedule, exit_condition) -> int:
             name=args.name,
             schedule=schedule,
             exit_condition=exit_condition,
-            metadata={"dsl": args.schedule},
+            metadata=metadata,
         ),
         sink=tee(sink),
         clock=clock,
     )
-    runner.start(start_time=clock())
+    runner.start(start_time=start)
     drive(
         runner,
         operanda=operanda,
@@ -257,10 +355,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             schedule = _build_schedule(args.schedule)
             exit_condition = _build_exit(args)
-        except (DslError, ScheduleConfigError, ValueError) as exc:
+            _check_backend(args, schedule)
+            port = (
+                _open_serial(args.port, args.baud or DEFAULT_BAUD)
+                if args.backend == "serial"
+                else None
+            )
+        except (DslError, ScheduleConfigError, ValueError, OSError) as exc:
             print(f"{parser.prog}: error: {exc}", file=sys.stderr)
             return 2
-        return run(args, schedule, exit_condition)
+        try:
+            return run(args, schedule, exit_condition, port)
+        finally:
+            # ``drive`` closes the port when it returns; this covers a failure
+            # before the loop starts (closing pyserial twice is harmless).
+            if port is not None:
+                port.close()
     parser.error(f"unknown command: {args.command!r}")
     return 2  # unreachable; argparse exits in error()
 

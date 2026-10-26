@@ -74,10 +74,13 @@ tail -n 1 fi30.okl
 | `--exit-reinforcers N` | この 2 つのどちらかが必須 | 強化子 N 回で停止 |
 | `--exit-time SECONDS` | | セッション時間 SECONDS 秒で停止 |
 | `--name NAME` | `session` | ヘッダに書くセッション名 |
+| `--backend NAME` | `virtual` | `virtual`（仮想被験体）か `serial`（シリアルポートの機器） |
+| `--port DEVICE` | なし | シリアルポート（例: `/dev/cu.usbmodem1`、`COM3`。`--backend serial` のときだけ） |
+| `--baud N` | `115200` | シリアルポートのボーレート（`--backend serial` のときだけ） |
 | `--virtual-rate-hz HZ` | `1.0` | 仮想被験体の反応率（毎秒の反応数） |
 | `--seed N` | `0` | 仮想被験体の反応の seed |
 | `--reinforcer-duration SEC` | `0.5` | 強化子 1 回の提示時間 |
-| `--poll-interval SEC` | `0.001` | 待機中の 1 ステップで時計を進める量 |
+| `--poll-interval SEC` | `0.001` | 待機中の 1 ステップの待ち（時計を進める量。`--backend serial` では sleep） |
 | `--max-steps N` | 自動 | ループのステップ数の上限（「制限」を参照） |
 | `--max-duration SEC` | なし | 壁時計時間の上限（任意） |
 
@@ -92,12 +95,27 @@ operant run --schedule $'@algorithm("fleshler-hoffman", n=12, seed=42)\nConc(VI3
 
 各成分には書いた順に seed 42、43、… が割り当てられます。
 
+**シリアルポートの機器。** `--backend serial --port DEVICE` を付けると、仮想被験体の代わりに機器（例: レバーと給餌器をつないだマイコン）から反応を受け取り、パソコンの単調増加の時計で動きます。pyserial が要ります（`pip install pyserial`）。機器は [experiment-io](https://github.com/OperantKit/experiment-io) のシリアルの形式で、1 行に 1 つの JSON をやり取りします:
+
+```text
+device -> computer   {"op": 0, "ts": 12.345, "kind": "response"}
+computer -> device   {"cmd": "reinforcer", "op": 0, "duration": 0.5}
+```
+
+```bash
+operant run --backend serial --port /dev/cu.usbmodem1 --schedule "CRF" \
+    --output crf.okl --exit-reinforcers 20
+```
+
+セッションの開始前に届いていた行は捨てます。セッションの時刻はパソコンが受け取った時刻で、機器の `ts` はログに書きません。ヘッダには `clock_type = "monotonic"`、`backend = "serial"`、`session_start`（開始時の時計の値。各イベントの時刻も同じ時計なので、開始からの時間はこれを引いて求めます）が入ります。機器ごとに要るセッション前後の命令（開始・停止など）は送りません。
+
 ## 制限
 
-- **仮想被験体のみ。** 被験体は一定の Poisson 率で反応し、強化によって変化しません。そのためログが示すのはスケジュールのプログラムが何を提示するかであって、動物がどう振る舞うかではありません。シリアルポートと HIL（hardware-in-the-loop、実機を回路ごとつないだ検証）のバックエンドは [experiment-io](https://github.com/OperantKit/experiment-io) にありますが、このコマンドからは選べません。
-- **ステップ数の上限。** 反応 1 回と強化子の提示 1 回がそれぞれループの 1 ステップです。`--exit-time` のときの既定の上限はセッション時間と反応率から決まるので、セッションは時間の上限で終わります。`--exit-reinforcers` のときの既定の上限は 1,000,000 ステップで、強化子を提示しないスケジュール（例: `EXT`）が止まらなくなるのを防ぎます。上限に達したセッションは `RuntimeError: drive: did not finish within N steps` で止まり、途中までのログが残ります。必要なら `--max-steps N` で大きな値を指定してください。
+- **仮想被験体は学習しません。** 一定の Poisson 率で反応し、強化によって変化しません。そのため仮想のログが示すのはスケジュールのプログラムが何を提示するかであって、動物がどう振る舞うかではありません。
+- **シリアルはオペランダム 1 つ。** `--backend serial` は並立スケジュールを受け付けません（すべてのオペランダムが 1 本のポートを共有するため）。experiment-io の HIL（hardware-in-the-loop、実機を回路ごとつないだ検証）のバックエンドは、このコマンドからは選べません。
+- **ステップ数の上限。** 反応 1 回と強化子の提示 1 回がそれぞれループの 1 ステップです。`--exit-time` のときの既定の上限はセッション時間と反応率から決まるので、セッションは時間の上限で終わります。`--exit-reinforcers` のときの既定の上限は 1,000,000 ステップで、強化子を提示しないスケジュール（例: `EXT`）が止まらなくなるのを防ぎます。上限に達したセッションは `RuntimeError: drive: did not finish within N steps` で止まり、途中までのログが残ります。必要なら `--max-steps N` で大きな値を指定してください。`--backend serial` では待機中の 1 回ごともステップに数えるので既定の上限は無く、終了条件と `--max-duration` でセッションが終わります（`EXT` のように強化子を提示しないスケジュールに `--exit-reinforcers` を使うときは `--max-duration` を付けてください）。
 - **Fleshler–Hoffman のみ。** `@algorithm("arithmetic")` はエラーになります。
-- **時刻は模擬時間です。** ログの時刻は模擬時計上のセッション時間で、壁時計の時刻ではありません。
+- **仮想の時刻は模擬時間です。** `--backend virtual` のとき、ログの時刻は模擬時計上のセッション時間で、壁時計の時刻ではありません。
 
 このコマンドを AI のコーディング支援ツールに使わせる場合は [AGENTS.md](AGENTS.md) を参照してください。
 

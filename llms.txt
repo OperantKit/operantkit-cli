@@ -1,6 +1,6 @@
 # operantkit-cli
 
-> Command-line entry point for OperantKit: `operant run` takes one contingency-dsl schedule expression (FR, VR, FI, VI, FT, VT, CRF, EXT, DRO/DRL/DRH, concurrent, multiple, chained, and more), runs a session against a seeded virtual subject, and writes an OKL v1 event log.
+> Command-line entry point for OperantKit: `operant run` takes one contingency-dsl schedule expression (FR, VR, FI, VI, FT, VT, CRF, EXT, DRO/DRL/DRH, concurrent, multiple, chained, and more), runs a session against a seeded virtual subject or a device on a serial port (`--backend serial --port DEVICE`), and writes an OKL v1 event log.
 
 operantkit-cli is part of OperantKit, a set of Python/Rust packages for designing and running operant and respondent conditioning experiments (reinforcement schedules, session recording, analysis). Use it instead of hand-writing a session loop: the schedule is stated once in contingency-dsl, variable schedules use the Fleshler-Hoffman (1962) progression with a controllable seed, each concurrent component gets its own operandum, and the log header records the DSL source and the column layout of every event type.
 
