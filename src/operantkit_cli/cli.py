@@ -35,6 +35,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from contingency.bridge import from_dsl
+from contingency.bridge.spec import to_spec
 from contingency.errors import ScheduleConfigError
 from contingency.schedules.concurrent import Concurrent
 from contingency_dsl import DslError, parse
@@ -44,8 +45,22 @@ from contingency_dsl.annotations.stimulus.extension import StimulusExtension
 from contingency_dsl.annotations.subjects.extension import SubjectsExtension
 from contingency_dsl.annotations.temporal.extension import TemporalExtension
 from contingency_dsl.extensions import ExtensionRegistry
-from experiment_core import ReinforcementCountExit, TimeLimitExit
+from experiment_core import (
+    ReinforcementCountExit,
+    ReinforcerEndEvent,
+    ReinforcerStartEvent,
+    ResponseEvent,
+    TimeLimitExit,
+)
 from experiment_io import drive
+from experiment_io.device import (
+    DECISIONS,
+    DEVICE_CLOCK_TYPE,
+    DeviceEvent,
+    DeviceUnsupportedError,
+    device_schedule_from_spec,
+    drive_device,
+)
 from experiment_io.hw.backends.serial import SerialOperandum, SerialReinforcer
 from experiment_io.hw.backends.virtual import (
     ManualClock,
@@ -180,6 +195,14 @@ def build_parser() -> argparse.ArgumentParser:
         "the session.",
     )
     run.add_argument(
+        "--decision",
+        choices=DECISIONS,
+        default=None,
+        help="Where the contingency is decided (serial only). host (default): "
+        "this process; device: the device on --port, which needs a schedule "
+        "it can decide and --exit-reinforcers.",
+    )
+    run.add_argument(
         "--max-duration",
         type=float,
         default=None,
@@ -221,12 +244,19 @@ def _build_exit(args: argparse.Namespace):
 def _check_backend(args: argparse.Namespace, schedule) -> None:
     """Reject backend options that do not fit together or with the schedule."""
     if args.backend == "virtual":
-        for flag, value in (("--port", args.port), ("--baud", args.baud)):
+        for flag, value in (
+            ("--port", args.port),
+            ("--baud", args.baud),
+            ("--decision", args.decision),
+        ):
             if value is not None:
                 raise ValueError(f"{flag} requires --backend serial")
         return
     if args.port is None:
         raise ValueError("--backend serial requires --port")
+    if args.decision == "device":
+        _device_schedule(args)  # refuses before the port is opened
+        return
     if isinstance(schedule, Concurrent):
         # One port carries every operandum, and each SerialOperandum drops
         # the lines of the other operanda, so components would lose responses.
@@ -234,6 +264,72 @@ def _check_backend(args: argparse.Namespace, schedule) -> None:
             "--backend serial does not support concurrent schedules yet; "
             "use a single-operandum schedule"
         )
+
+
+def _device_schedule(args: argparse.Namespace) -> dict:
+    """Return the ``load`` schedule for ``--decision device``, or refuse it."""
+    if args.exit_reinforcers is None:
+        raise ValueError(
+            "--decision device requires --exit-reinforcers (the device stops "
+            "itself after that many reinforcers); or run it with --decision host"
+        )
+    spec = to_spec(parse(args.schedule, extensions=_ANNOTATIONS))
+    if not isinstance(spec, dict):
+        raise DeviceUnsupportedError(
+            f'schedule "{args.schedule}" cannot run on the device; '
+            "run it on the host with --decision host"
+        )
+    return device_schedule_from_spec(spec, args.schedule)
+
+
+def run_device(args: argparse.Namespace, port) -> int:
+    """Execute ``run --decision device``: the device decides, this records.
+
+    Session time is the device clock: the header says ``clock_type =
+    "device"``, ``session_start`` is the ``ts`` of ``started`` and every
+    line carries the device's ``ts``.
+    """
+    schedule = _device_schedule(args)
+    sink: list[OklSink] = []
+
+    def on_start(session_start: float, firmware: str | None) -> None:
+        okl = OklSink(args.output)
+        okl.write_header(
+            session_name=args.name,
+            clock_type=DEVICE_CLOCK_TYPE,
+            session_start=session_start,
+            metadata={
+                "dsl": args.schedule,
+                "backend": "serial",
+                "decision": "device",
+                "device_firmware": str(firmware),
+                "reinforcer_duration_s": args.reinforcer_duration,
+            },
+        )
+        sink.append(okl)
+
+    def on_event(event: DeviceEvent) -> None:
+        if not sink:
+            return
+        kinds = {
+            "response": ResponseEvent,
+            "reinforcer_start": ReinforcerStartEvent,
+            "reinforcer_end": ReinforcerEndEvent,
+        }
+        sink[0].emit(kinds[event.kind](id=event.index, timestamp=event.ts, operandum=event.op))
+
+    drive_device(
+        lambda: port,
+        schedule,
+        reinforcers=args.exit_reinforcers,
+        reinforcer_duration=args.reinforcer_duration,
+        clock=_serial_clock(),
+        on_start=on_start,
+        on_event=on_event,
+        max_duration=args.max_duration if args.max_duration is not None else math.inf,
+        label=args.schedule,
+    )
+    return 0
 
 
 def _open_serial(port: str, baud: int):
@@ -300,13 +396,13 @@ def run(args: argparse.Namespace, schedule, exit_condition, port=None) -> int:
         operanda = _build_virtual_operanda(schedule, args, clock)
         reinforcers = [RecordingReinforcer(operandum_index=i) for i in range(len(operanda))]
         clock_type = type(clock).__name__
-        metadata = {"dsl": args.schedule}
+        metadata = {"dsl": args.schedule, "decision": "host"}
     else:
         clock = _serial_clock()
         operanda = [SerialOperandum(port, 0)]
         reinforcers = [SerialReinforcer(port, 0)]
         clock_type = "monotonic"
-        metadata = {"dsl": args.schedule, "backend": "serial"}
+        metadata = {"dsl": args.schedule, "backend": "serial", "decision": "host"}
         # Lines the device sent before the session belong to no session.
         reset = getattr(port, "reset_input_buffer", None)
         if callable(reset):
@@ -365,6 +461,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"{parser.prog}: error: {exc}", file=sys.stderr)
             return 2
         try:
+            if args.decision == "device":
+                try:
+                    return run_device(args, port)
+                except DeviceUnsupportedError as exc:  # the device refused ``load``
+                    print(f"{parser.prog}: error: {exc}", file=sys.stderr)
+                    return 2
             return run(args, schedule, exit_condition, port)
         finally:
             # ``drive`` closes the port when it returns; this covers a failure

@@ -109,6 +109,13 @@ operant run --backend serial --port /dev/cu.usbmodem1 --schedule "CRF" \
 
 セッションの開始前に届いていた行は捨てます。セッションの時刻はパソコンが受け取った時刻で、機器の `ts` はログに書きません。ヘッダには `clock_type = "monotonic"`、`backend = "serial"`、`session_start`（開始時の時計の値。各イベントの時刻も同じ時計なので、開始からの時間はこれを引いて求めます）が入ります。機器ごとに要るセッション前後の命令（開始・停止など）は送りません。
 
+これは `--decision host`（既定）の動き方で、随伴性はこのプロセスが判断し、ヘッダには `decision = "host"` が入ります。`--decision device` にすると、`--port` の機器が随伴性を判断します。コマンドは `load` と `start` を送って機器の事象を記録し、`--exit-reinforcers`（必須）の回数の強化子で止めます。ヘッダには `decision = "device"`、`clock_type = "device"`、`device_firmware`、`session_start`（`started` の時点の機器の `ts`）が入り、各行は機器の `ts` を持ちます。機器が判断できないスケジュール（複合スケジュールや、`@algorithm("fleshler-hoffman", seed=N)` の無い乱数のスケジュール）は、ログを作る前・`start` を送る前に終了コード 2 で断り、`--decision host` で走らせるよう案内します。`--backend virtual` と `--decision` を組んだときも終了コード 2 です。
+
+```bash
+operant run --backend serial --port /dev/cu.usbmodem1 --schedule "CRF" \
+    --output crf.okl --exit-reinforcers 20 --decision device
+```
+
 ## 制限
 
 - **仮想被験体は学習しません。** 一定の Poisson 率で反応し、強化によって変化しません。そのため仮想のログが示すのはスケジュールのプログラムが何を提示するかであって、動物がどう振る舞うかではありません。

@@ -109,6 +109,13 @@ operant run --backend serial --port /dev/cu.usbmodem1 --schedule "CRF" \
 
 Lines that arrived before the session starts are discarded. Session times are the computer's receipt times; the device's `ts` is not written to the log. The header has `clock_type = "monotonic"`, `backend = "serial"`, and `session_start` (the clock reading at the start; event times are on the same clock, so subtract it for times from the session start). Commands that a particular device needs before or after a session (for example to start or stop it) are not sent.
 
+This is `--decision host` (the default): this process decides the contingency, and the header says `decision = "host"`. With `--decision device`, the device on `--port` decides it: the command sends `load` and `start`, records the device's events, and stops after `--exit-reinforcers` reinforcers (required). The header then has `decision = "device"`, `clock_type = "device"`, `device_firmware`, and `session_start` = the device's `ts` at `started`; every line carries the device's `ts`. A schedule the device cannot decide (a compound schedule, or a random one without `@algorithm("fleshler-hoffman", seed=N)`) is refused with exit status 2 before the log is created and before `start` is sent; the message says to run it with `--decision host`. `--decision` with `--backend virtual` is also exit status 2.
+
+```bash
+operant run --backend serial --port /dev/cu.usbmodem1 --schedule "CRF" \
+    --output crf.okl --exit-reinforcers 20 --decision device
+```
+
 ## Limitations
 
 - **The virtual subject does not learn.** It responds at a constant Poisson rate and does not change with reinforcement, so a virtual log shows what the schedule program delivers, not what an animal would do.
