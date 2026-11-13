@@ -1,4 +1,4 @@
-"""Run the 30-second example in each README and check the output it documents."""
+"""Run the example in each README and check the output it documents."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import pytest
 from operantkit_cli.cli import main
 
 ROOT = Path(__file__).resolve().parent.parent
-READMES = {"README.md": "## 30-second example", "README.ja.md": "## 30 秒で動く例"}
+READMES = {"README.md": "## Example", "README.ja.md": "## 例"}
 _BASH = re.compile(r"```bash\n(.*?)```", re.DOTALL)
 _COUNT = re.compile(r"^#\s+(\d+) (\w+)$")
 
@@ -25,7 +25,7 @@ def _example(name: str) -> list[str]:
 
 @pytest.mark.integration
 @pytest.mark.parametrize("name", list(READMES))
-def test_readme_30_second_example(
+def test_readme_example(
     name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     lines = _example(name)

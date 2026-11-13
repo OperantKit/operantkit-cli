@@ -28,7 +28,7 @@ pip install git+https://github.com/OperantKit/contingency-dsl-py \
 
 No third-party library is needed. pip resolves the dependencies between them, and `pip check` reports nothing.
 
-## 30-second example
+## Example
 
 Run a fixed-interval (FI) 30-s schedule against the built-in virtual subject until 5 reinforcers are delivered:
 
@@ -136,7 +136,7 @@ pip install pytest pytest-cov
 pytest
 ```
 
-`tests/test_readme_examples.py` runs the 30-second example in both READMEs and checks the counts and the last line shown there.
+`tests/test_readme_examples.py` runs the example in both READMEs and checks the counts and the last line shown there.
 
 ## References
 

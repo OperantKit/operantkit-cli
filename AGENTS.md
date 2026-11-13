@@ -45,4 +45,4 @@ Use behavior-analytic terms: *reinforcer* (not "reward"), *discriminative stimul
 
 - Python 3.11+. Create the environment with `python -m venv .venv` and `.venv/bin/python -m pip install -e ".[dev]"`; run `.venv/bin/pytest`.
 - `README.md` (English) is canonical; keep `README.ja.md` in sync in the same commit.
-- The 30-second example in both READMEs is executed by `tests/test_readme_examples.py`, which checks the event counts and the last log line written in the README.
+- The example in both READMEs is executed by `tests/test_readme_examples.py`, which checks the event counts and the last log line written in the README.

@@ -32,7 +32,7 @@ Session time is simulated (the session above lasts 154.6 s and finishes in about
 
 ## Docs
 
-- [README](https://github.com/OperantKit/operantkit-cli/blob/main/README.md): install, 30-second example, why not to hand-roll a session loop, all `run` flags
+- [README](https://github.com/OperantKit/operantkit-cli/blob/main/README.md): install, example, why not to hand-roll a session loop, all `run` flags
 - [AGENTS.md](https://github.com/OperantKit/operantkit-cli/blob/main/AGENTS.md): when to use this package and what not to do
 
 ## Related packages

@@ -28,7 +28,7 @@ pip install git+https://github.com/OperantKit/contingency-dsl-py \
 
 外部のライブラリは要りません。依存は pip が解決するので、`pip check` は何も報告しません。
 
-## 30 秒で動く例
+## 例
 
 固定時隔（FI）30 秒スケジュールを組み込みの仮想被験体に対して実行し、強化子が 5 回提示されたら止めます:
 
@@ -136,7 +136,7 @@ pip install pytest pytest-cov
 pytest
 ```
 
-`tests/test_readme_examples.py` は両方の README の「30 秒で動く例」を実行し、そこに書かれた件数と最終行を照合します。
+`tests/test_readme_examples.py` は両方の README の「例」を実行し、そこに書かれた件数と最終行を照合します。
 
 ## 参考文献
 
